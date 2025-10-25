@@ -6,71 +6,217 @@ import { GenericContractsDeclaration } from "~~/utils/scaffold-eth/contract";
 
 const deployedContracts = {
   31337: {
-    YourContract: {
-      address: "0x700b6a60ce7eaaea56f065753d8dcb9653dbad35",
+    BlancInteractions: {
+      address: "0xa15bb66138824a1c7167f5e85b957d04dd34e468",
       abi: [
-        {
-          type: "constructor",
-          inputs: [
-            {
-              name: "_owner",
-              type: "address",
-              internalType: "address",
-            },
-          ],
-          stateMutability: "nonpayable",
-        },
         {
           type: "receive",
           stateMutability: "payable",
         },
         {
           type: "function",
-          name: "greeting",
-          inputs: [],
-          outputs: [
+          name: "createInteraction",
+          inputs: [
             {
-              name: "",
+              name: "ipfsHash",
+              type: "string",
+              internalType: "string",
+            },
+            {
+              name: "caption",
               type: "string",
               internalType: "string",
             },
           ],
-          stateMutability: "view",
+          outputs: [
+            {
+              name: "",
+              type: "uint256",
+              internalType: "uint256",
+            },
+          ],
+          stateMutability: "nonpayable",
         },
         {
           type: "function",
-          name: "owner",
-          inputs: [],
+          name: "getInteraction",
+          inputs: [
+            {
+              name: "id",
+              type: "uint256",
+              internalType: "uint256",
+            },
+          ],
           outputs: [
+            {
+              name: "",
+              type: "uint256",
+              internalType: "uint256",
+            },
             {
               name: "",
               type: "address",
               internalType: "address",
             },
-          ],
-          stateMutability: "view",
-        },
-        {
-          type: "function",
-          name: "premium",
-          inputs: [],
-          outputs: [
+            {
+              name: "",
+              type: "address",
+              internalType: "address",
+            },
+            {
+              name: "",
+              type: "string",
+              internalType: "string",
+            },
+            {
+              name: "",
+              type: "string",
+              internalType: "string",
+            },
+            {
+              name: "",
+              type: "uint256",
+              internalType: "uint256",
+            },
             {
               name: "",
               type: "bool",
               internalType: "bool",
+            },
+            {
+              name: "",
+              type: "uint256",
+              internalType: "uint256",
             },
           ],
           stateMutability: "view",
         },
         {
           type: "function",
-          name: "setGreeting",
+          name: "getInteractionCounter",
+          inputs: [],
+          outputs: [
+            {
+              name: "",
+              type: "uint256",
+              internalType: "uint256",
+            },
+          ],
+          stateMutability: "view",
+        },
+        {
+          type: "function",
+          name: "getUserInteractions",
           inputs: [
             {
-              name: "_newGreeting",
+              name: "user",
+              type: "address",
+              internalType: "address",
+            },
+          ],
+          outputs: [
+            {
+              name: "",
+              type: "uint256[]",
+              internalType: "uint256[]",
+            },
+          ],
+          stateMutability: "view",
+        },
+        {
+          type: "function",
+          name: "getVerifiedInteractionsCount",
+          inputs: [
+            {
+              name: "user",
+              type: "address",
+              internalType: "address",
+            },
+          ],
+          outputs: [
+            {
+              name: "",
+              type: "uint256",
+              internalType: "uint256",
+            },
+          ],
+          stateMutability: "view",
+        },
+        {
+          type: "function",
+          name: "interactionCounter",
+          inputs: [],
+          outputs: [
+            {
+              name: "",
+              type: "uint256",
+              internalType: "uint256",
+            },
+          ],
+          stateMutability: "view",
+        },
+        {
+          type: "function",
+          name: "interactions",
+          inputs: [
+            {
+              name: "",
+              type: "uint256",
+              internalType: "uint256",
+            },
+          ],
+          outputs: [
+            {
+              name: "id",
+              type: "uint256",
+              internalType: "uint256",
+            },
+            {
+              name: "initiator",
+              type: "address",
+              internalType: "address",
+            },
+            {
+              name: "verifier",
+              type: "address",
+              internalType: "address",
+            },
+            {
+              name: "ipfsHash",
               type: "string",
               internalType: "string",
+            },
+            {
+              name: "caption",
+              type: "string",
+              internalType: "string",
+            },
+            {
+              name: "timestamp",
+              type: "uint256",
+              internalType: "uint256",
+            },
+            {
+              name: "verified",
+              type: "bool",
+              internalType: "bool",
+            },
+            {
+              name: "tipAmount",
+              type: "uint256",
+              internalType: "uint256",
+            },
+          ],
+          stateMutability: "view",
+        },
+        {
+          type: "function",
+          name: "tipInteraction",
+          inputs: [
+            {
+              name: "interactionId",
+              type: "uint256",
+              internalType: "uint256",
             },
           ],
           outputs: [],
@@ -78,8 +224,19 @@ const deployedContracts = {
         },
         {
           type: "function",
-          name: "totalCounter",
-          inputs: [],
+          name: "userInteractions",
+          inputs: [
+            {
+              name: "",
+              type: "address",
+              internalType: "address",
+            },
+            {
+              name: "",
+              type: "uint256",
+              internalType: "uint256",
+            },
+          ],
           outputs: [
             {
               name: "",
@@ -91,7 +248,7 @@ const deployedContracts = {
         },
         {
           type: "function",
-          name: "userGreetingCounter",
+          name: "verifiedCount",
           inputs: [
             {
               name: "",
@@ -110,35 +267,66 @@ const deployedContracts = {
         },
         {
           type: "function",
-          name: "withdraw",
-          inputs: [],
+          name: "verifyInteraction",
+          inputs: [
+            {
+              name: "interactionId",
+              type: "uint256",
+              internalType: "uint256",
+            },
+          ],
           outputs: [],
           stateMutability: "nonpayable",
         },
         {
           type: "event",
-          name: "GreetingChange",
+          name: "InteractionCreated",
           inputs: [
             {
-              name: "greetingSetter",
+              name: "id",
+              type: "uint256",
+              indexed: true,
+              internalType: "uint256",
+            },
+            {
+              name: "initiator",
               type: "address",
               indexed: true,
               internalType: "address",
             },
             {
-              name: "newGreeting",
+              name: "ipfsHash",
               type: "string",
               indexed: false,
               internalType: "string",
             },
             {
-              name: "premium",
-              type: "bool",
+              name: "caption",
+              type: "string",
               indexed: false,
-              internalType: "bool",
+              internalType: "string",
+            },
+          ],
+          anonymous: false,
+        },
+        {
+          type: "event",
+          name: "InteractionTipped",
+          inputs: [
+            {
+              name: "id",
+              type: "uint256",
+              indexed: true,
+              internalType: "uint256",
             },
             {
-              name: "value",
+              name: "tipper",
+              type: "address",
+              indexed: true,
+              internalType: "address",
+            },
+            {
+              name: "amount",
               type: "uint256",
               indexed: false,
               internalType: "uint256",
@@ -146,9 +334,28 @@ const deployedContracts = {
           ],
           anonymous: false,
         },
+        {
+          type: "event",
+          name: "InteractionVerified",
+          inputs: [
+            {
+              name: "id",
+              type: "uint256",
+              indexed: true,
+              internalType: "uint256",
+            },
+            {
+              name: "verifier",
+              type: "address",
+              indexed: true,
+              internalType: "address",
+            },
+          ],
+          anonymous: false,
+        },
       ],
       inheritedFunctions: {},
-      deployedOnBlock: 1,
+      deployedOnBlock: 7,
     },
   },
 } as const;
