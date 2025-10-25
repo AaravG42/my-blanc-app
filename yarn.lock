@@ -2608,11 +2608,11 @@ __metadata:
   linkType: hard
 
 "@oclif/plugin-help@npm:^6":
-  version: 6.2.33
-  resolution: "@oclif/plugin-help@npm:6.2.33"
+  version: 6.2.34
+  resolution: "@oclif/plugin-help@npm:6.2.34"
   dependencies:
     "@oclif/core": ^4
-  checksum: c2fc7a2071f1149bc911f5d6a877616c471773ef128490bae09b465d54c025d2a675c179113ccf33e27d79f467bcfcf402c7e203572deb8e44ba42a6f15ae27a
+  checksum: 3d119e86bdb0a76a61b187ad90446871370d4dc8ea8b295d63f426dbbd05dc7204402691df3d9a94459c4aaaa3f15876e6cc77495572d0ec0f6aedfd34ba291d
   languageName: node
   linkType: hard
 
@@ -3047,6 +3047,7 @@ __metadata:
     blo: ~1.2.0
     burner-connector: 0.0.18
     daisyui: 5.0.9
+    date-fns: ^2.30.0
     eslint: ~9.23.0
     eslint-config-next: ~15.2.3
     eslint-config-prettier: ~10.1.1
@@ -6028,7 +6029,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"date-fns@npm:^2.29.3":
+"date-fns@npm:^2.29.3, date-fns@npm:^2.30.0":
   version: 2.30.0
   resolution: "date-fns@npm:2.30.0"
   dependencies:
@@ -8028,8 +8029,8 @@ __metadata:
   linkType: hard
 
 "got@npm:^14.4.5":
-  version: 14.6.0
-  resolution: "got@npm:14.6.0"
+  version: 14.6.1
+  resolution: "got@npm:14.6.1"
   dependencies:
     "@sindresorhus/is": ^7.0.1
     "@szmarczak/http-timer": ^5.0.1
@@ -8043,7 +8044,7 @@ __metadata:
     p-cancelable: ^4.0.1
     responselike: ^4.0.2
     type-fest: ^4.26.1
-  checksum: 6965c5ec424a082009c75c66e394b2d327bdc7a2080e0c60f5bf54793dc057b188a2a209713f099e0e9141d0942bd3c2ba8d6cc2fc77a39ac15f31cad21dcc4a
+  checksum: a73349e5081bcd4d154b4c262ac53d3aa88ed78c3679cf89114fc84ced09c67ed8e79a6138d53578f2da33432ad0592cf72053b59c0cdf1ea8405507b26532f1
   languageName: node
   linkType: hard
 

@@ -1,138 +1,168 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { toast } from "react-hot-toast";
 import { useAccount } from "wagmi";
 import { QRScanner } from "~~/components/QRScanner";
-import { Address } from "~~/components/scaffold-eth";
 import { useScaffoldReadContract, useScaffoldWriteContract } from "~~/hooks/scaffold-eth";
+import { mockSessionStore } from "~~/utils/mockSessionStore";
 
-export default function VerifyInteraction() {
-  const { address, isConnected } = useAccount();
-  const router = useRouter();
+export default function VerifyPage() {
   const searchParams = useSearchParams();
-  const { writeContractAsync, isPending } = useScaffoldWriteContract({
-    contractName: "BlancInteractions",
+  const router = useRouter();
+  const { address } = useAccount();
+  const initialId = searchParams?.get("id");
+
+  const [scannedData, setScannedData] = useState<string | null>(initialId);
+  const [scannedType, setScannedType] = useState<"post" | "session" | null>(
+    initialId?.startsWith("session_") ? "session" : initialId ? "post" : null,
+  );
+  const [error, setError] = useState<string>("");
+  const [isVerifying, setIsVerifying] = useState(false);
+  const [showSuccess, setShowSuccess] = useState(false);
+
+  const { writeContractAsync } = useScaffoldWriteContract({
+    contractName: "BlancPosts",
   });
 
-  const [interactionId, setInteractionId] = useState<number | null>(null);
-  const [showScanner, setShowScanner] = useState(false);
-
-  const idFromQuery = searchParams?.get("id");
+  const { data: post } = useScaffoldReadContract({
+    contractName: "BlancPosts",
+    functionName: "getPost",
+    args: scannedData && scannedType === "post" ? [BigInt(scannedData)] : undefined,
+  });
 
   useEffect(() => {
-    if (idFromQuery) {
-      setInteractionId(parseInt(idFromQuery));
+    if (initialId) {
+      console.log("Initial ID from URL:", initialId);
+      if (initialId.startsWith("session_")) {
+        console.log("Auto-joining session from URL");
+        handleSessionJoin(initialId);
+      } else if (initialId.startsWith("0x")) {
+        console.log("Auto-joining with address from URL");
+        handleSessionJoin(initialId);
+      }
     }
-  }, [idFromQuery]);
+  }, [initialId]);
 
-  const { data: interaction } = useScaffoldReadContract({
-    contractName: "BlancInteractions",
-    functionName: "getInteraction",
-    args: interactionId ? [BigInt(interactionId)] : undefined,
-  });
+  const handleScanSuccess = (data: string) => {
+    console.log("Scanned data:", data);
 
-  const handleScanSuccess = (decodedText: string) => {
-    const url = new URL(decodedText);
-    const id = url.searchParams.get("id");
-    if (id) {
-      setInteractionId(parseInt(id));
-      setShowScanner(false);
+    if (data.startsWith("session_")) {
+      console.log("Detected session ID");
+      setScannedData(data);
+      setScannedType("session");
+      setError("");
+      handleSessionJoin(data);
+    } else if (data.startsWith("0x")) {
+      console.log("Detected address");
+      // Handle direct address scan (for adding as participant)
+      setScannedData(data);
+      setScannedType("session");
+      setError("");
+      handleSessionJoin(data); // Treat address as a participant to add
+    } else {
+      try {
+        const url = new URL(data);
+        const id = url.searchParams.get("id");
+        console.log("URL detected, id:", id);
+        if (id) {
+          if (id.startsWith("session_")) {
+            console.log("Session ID from URL");
+            setScannedData(id);
+            setScannedType("session");
+            setError("");
+            handleSessionJoin(id);
+          } else {
+            console.log("Post ID detected");
+            setScannedData(id);
+            setScannedType("post");
+            setError("");
+          }
+        } else {
+          setError("Invalid QR code");
+        }
+      } catch {
+        setError("Invalid QR code format");
+      }
+    }
+  };
+
+  const handleSessionJoin = async (scannedData: string) => {
+    console.log("Joining with scanned data:", scannedData, "user address:", address);
+
+    // For testing: generate a temporary address if wallet not connected
+    let participantAddress = address;
+    if (!participantAddress) {
+      // Generate a temporary address for testing
+      participantAddress = `0x${Math.random().toString(16).substring(2, 42).padEnd(40, "0")}`;
+      console.log("Generated temporary address for testing:", participantAddress);
+    }
+
+    if (scannedData.startsWith("session_")) {
+      // Scanned a session ID - add current user to that session
+      const session = await mockSessionStore.getSession(scannedData);
+      console.log("Found session:", session);
+
+      if (!session) {
+        setError("Session not found or expired");
+        return;
+      }
+
+      const success = await mockSessionStore.addParticipant(scannedData, participantAddress);
+      if (success) {
+        console.log("Successfully joined session");
+        setShowSuccess(true);
+        setTimeout(() => {
+          router.push("/feed");
+        }, 2000);
+      } else {
+        setError("You've already joined this session");
+      }
+    } else if (scannedData.startsWith("0x")) {
+      // This would be for scanning someone's profile QR
+      // Not implemented in current flow
+      setError("Profile scanning not implemented yet");
+    } else {
+      setError("Invalid QR code format");
     }
   };
 
   const handleVerify = async () => {
-    if (!isConnected) {
-      toast.error("Please connect your wallet");
-      return;
-    }
-
-    if (!interactionId) {
-      toast.error("Invalid interaction ID");
-      return;
-    }
+    if (!scannedData) return;
 
     try {
-      toast.loading("Verifying interaction...");
+      setIsVerifying(true);
       await writeContractAsync({
-        functionName: "verifyInteraction",
-        args: [BigInt(interactionId)],
+        functionName: "verifyPost",
+        args: [BigInt(scannedData)],
       });
-
-      toast.success("Interaction verified successfully!");
-      router.push(`/interaction/${interactionId}`);
+      setShowSuccess(true);
+      setTimeout(() => {
+        router.push("/feed");
+      }, 2000);
     } catch (error) {
-      console.error("Error verifying interaction:", error);
-      toast.error("Failed to verify interaction");
+      console.error("Error verifying:", error);
+      setError("Failed to verify post. Make sure you're a participant.");
+    } finally {
+      setIsVerifying(false);
     }
   };
 
-  if (!interaction) {
+  if (showSuccess) {
     return (
-      <div className="container mx-auto p-4">
-        {!interactionId ? (
-          <div>
-            <h1 className="text-3xl font-bold mb-6">Verify Interaction</h1>
-            <div className="card bg-base-100 shadow-xl">
-              <div className="card-body">
-                <p className="mb-4">Scan a QR code to verify an interaction</p>
-                {showScanner ? (
-                  <QRScanner onScanSuccess={handleScanSuccess} />
-                ) : (
-                  <button className="btn btn-primary" onClick={() => setShowScanner(true)}>
-                    Start Scanner
-                  </button>
-                )}
-              </div>
-            </div>
-          </div>
-        ) : (
-          <div className="alert alert-error">
-            <span>Interaction not found</span>
-          </div>
-        )}
-      </div>
-    );
-  }
-
-  const [id, initiator, , , caption, timestamp, verified] = interaction as any;
-
-  if (verified) {
-    return (
-      <div className="container mx-auto p-4 max-w-2xl">
-        <h1 className="text-3xl font-bold mb-6">Interaction Already Verified</h1>
-        <div className="card bg-base-100 shadow-xl">
-          <div className="card-body">
-            <div className="alert alert-success">
-              <span>This interaction has already been verified</span>
-            </div>
-            <div className="card-actions">
-              <Link href={`/interaction/${id}`} className="btn btn-primary">
-                View Interaction
-              </Link>
-            </div>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  if (initiator && (initiator as string).toLowerCase() === address?.toLowerCase()) {
-    return (
-      <div className="container mx-auto p-4 max-w-2xl">
-        <h1 className="text-3xl font-bold mb-6">Cannot Verify</h1>
-        <div className="card bg-base-100 shadow-xl">
-          <div className="card-body">
-            <div className="alert alert-warning">
-              <span>You cannot verify your own interaction</span>
-            </div>
-            <div className="card-actions">
-              <Link href={`/interaction/${id}`} className="btn btn-primary">
-                View Interaction
-              </Link>
-            </div>
+      <div className="min-h-screen flex items-center justify-center pb-20">
+        <div className="card bg-base-100 shadow-xl max-w-md">
+          <div className="card-body items-center text-center">
+            <div className="text-6xl mb-4">✓</div>
+            <h2 className="card-title text-success">{scannedType === "session" ? "Joined!" : "Verified!"}</h2>
+            <p>
+              {scannedData?.startsWith("session_")
+                ? "You've joined the post creation"
+                : scannedData?.startsWith("0x")
+                  ? "Address added as participant"
+                  : "Post verified successfully"}
+            </p>
+            <p className="text-sm text-base-content/60">Redirecting...</p>
           </div>
         </div>
       </div>
@@ -140,38 +170,80 @@ export default function VerifyInteraction() {
   }
 
   return (
-    <div className="container mx-auto p-4 max-w-2xl">
-      <h1 className="text-3xl font-bold mb-6">Verify Interaction</h1>
-
-      <div className="card bg-base-100 shadow-xl">
-        <div className="card-body">
-          <h2 className="card-title">Verify this interaction?</h2>
-          <div className="divider"></div>
-
-          <div className="space-y-3">
-            <div>
-              <span className="font-semibold">Initiator:</span>
-              <Address address={initiator as string} />
-            </div>
-            <div>
-              <span className="font-semibold">Caption:</span>
-              <p>{caption as string}</p>
-            </div>
-            <div>
-              <span className="font-semibold">Date:</span>
-              <p>{new Date(Number(timestamp) * 1000).toLocaleString()}</p>
-            </div>
-          </div>
-
-          <div className="card-actions justify-end mt-6">
-            <Link href="/" className="btn btn-outline">
-              Cancel
-            </Link>
-            <button className="btn btn-primary" onClick={handleVerify} disabled={isPending || !isConnected}>
-              {isPending ? "Verifying..." : "Verify Interaction"}
+    <div className="min-h-screen pb-20 bg-base-200">
+      <div className="sticky top-0 z-10 bg-base-100 border-b border-base-300">
+        <div className="container mx-auto px-4">
+          <div className="flex justify-between items-center h-14">
+            <button className="btn btn-ghost btn-sm" onClick={() => router.back()}>
+              ← Back
             </button>
+            <h1 className="text-xl font-bold">Verify Post</h1>
+            <div className="w-20"></div>
           </div>
         </div>
+      </div>
+
+      <div className="container mx-auto p-4 max-w-2xl">
+        {!scannedData || scannedType === "session" ? (
+          <div className="card bg-base-100 shadow-xl">
+            <div className="card-body">
+              <h2 className="card-title">Scan QR Code</h2>
+              <p className="text-sm text-base-content/70 mb-4">Scan to join a post creation or verify a post</p>
+              <QRScanner onScanSuccess={handleScanSuccess} onError={setError} />
+              {error && (
+                <div className="alert alert-error mt-4">
+                  <span>{error}</span>
+                </div>
+              )}
+            </div>
+          </div>
+        ) : scannedType === "post" ? (
+          <div className="card bg-base-100 shadow-xl">
+            <div className="card-body">
+              <h2 className="card-title">Confirm Verification</h2>
+              {post && (
+                <div className="space-y-4">
+                  <div className="aspect-square w-full rounded-lg overflow-hidden bg-base-200">
+                    <img
+                      src={
+                        post[3].startsWith("ipfs://")
+                          ? post[3].replace("ipfs://", "https://ipfs.io/ipfs/")
+                          : `https://ipfs.io/ipfs/${post[3]}`
+                      }
+                      alt="Post preview"
+                      className="w-full h-full object-cover"
+                      onError={e => {
+                        e.currentTarget.src = "/placeholder-image.png";
+                      }}
+                    />
+                  </div>
+                  <p className="text-sm">{post[4]}</p>
+                  <div className="text-xs text-base-content/60">
+                    <p>Post ID: {scannedData}</p>
+                    <p>Creator: {post[1].slice(0, 10)}...</p>
+                  </div>
+                </div>
+              )}
+              {error && (
+                <div className="alert alert-error">
+                  <span>{error}</span>
+                </div>
+              )}
+              <div className="card-actions justify-end mt-4">
+                <button className="btn btn-ghost" onClick={() => setScannedData(null)}>
+                  Cancel
+                </button>
+                <button
+                  className={`btn btn-primary ${isVerifying ? "loading" : ""}`}
+                  onClick={handleVerify}
+                  disabled={isVerifying}
+                >
+                  {isVerifying ? "Verifying..." : "Verify Post"}
+                </button>
+              </div>
+            </div>
+          </div>
+        ) : null}
       </div>
     </div>
   );

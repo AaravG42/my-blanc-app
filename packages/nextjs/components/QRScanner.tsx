@@ -40,6 +40,7 @@ export const QRScanner = ({ onScanSuccess, onError }: QRScannerProps) => {
           qrbox: { width: 250, height: 250 },
         },
         decodedText => {
+          console.log("QR Scanner decoded:", decodedText);
           onScanSuccess(decodedText);
         },
         () => {},

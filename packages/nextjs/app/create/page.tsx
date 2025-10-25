@@ -1,205 +1,329 @@
 "use client";
 
-import { useState } from "react";
-import Link from "next/link";
-import { toast } from "react-hot-toast";
+import { useEffect, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
+import { isAddress, parseEther } from "viem";
 import { useAccount } from "wagmi";
 import { QRCodeGenerator } from "~~/components/QRCodeGenerator";
-import { useScaffoldReadContract, useScaffoldWriteContract } from "~~/hooks/scaffold-eth";
+import { AddressInput } from "~~/components/scaffold-eth";
+import { useScaffoldWriteContract } from "~~/hooks/scaffold-eth";
 import { useIPFSUpload } from "~~/hooks/useIPFSUpload";
+import { mockSessionStore } from "~~/utils/mockSessionStore";
 
-export default function CreateInteraction() {
-  const { isConnected } = useAccount();
-  const { uploadToIPFS, isUploading } = useIPFSUpload();
-  const { writeContractAsync, isPending } = useScaffoldWriteContract({
-    contractName: "BlancInteractions",
-  });
-
-  const { data: interactionCounter, refetch: refetchCounter } = useScaffoldReadContract({
-    contractName: "BlancInteractions",
-    functionName: "getInteractionCounter",
-  });
-
+export default function CreatePage() {
+  const router = useRouter();
+  const { address } = useAccount();
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [previewUrl, setPreviewUrl] = useState<string>("");
   const [caption, setCaption] = useState("");
-  const [pendingInteractionId, setPendingInteractionId] = useState<number | null>(null);
-  const [step, setStep] = useState<"upload" | "qr" | "verifying" | "complete">("upload");
+  const [participants, setParticipants] = useState<string[]>([]);
+  const [newParticipant, setNewParticipant] = useState("");
+  const [isPublic, setIsPublic] = useState(true);
+  const [enablePayment, setEnablePayment] = useState(false);
+  const [paymentAmount, setPaymentAmount] = useState("");
+  const [isUploading, setIsUploading] = useState(false);
+  const [showQRCode, setShowQRCode] = useState(false);
+  const [sessionId, setSessionId] = useState<string>("");
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const { writeContractAsync } = useScaffoldWriteContract({ contractName: "BlancPosts" });
+  const { writeContractAsync: writePaymentAsync } = useScaffoldWriteContract({ contractName: "BlancPayments" });
+  const { uploadToIPFS } = useIPFSUpload();
+
+  const generateSessionId = async () => {
+    const id = `session_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    setSessionId(id);
+    if (address) {
+      await mockSessionStore.createSession(id, address);
+      console.log("Generated session:", id);
+    }
+    return id;
+  };
+
+  useEffect(() => {
+    if (showQRCode && sessionId) {
+      // Subscribe to session updates
+      const unsubscribe = mockSessionStore.subscribe(sessionId, sessionData => {
+        console.log("Session updated:", sessionData);
+        setParticipants(sessionData.participants);
+      });
+
+      // Polling is handled automatically by the store
+
+      return () => {
+        unsubscribe();
+      };
+    }
+  }, [showQRCode, sessionId]);
+
+  // Polling is handled automatically by the store
+
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
       setSelectedFile(file);
+      const url = URL.createObjectURL(file);
+      setPreviewUrl(url);
     }
   };
 
-  const handleCreateInteraction = async () => {
-    if (!selectedFile || !caption.trim()) {
-      toast.error("Please select a file and enter a caption");
+  const addParticipant = async () => {
+    if (newParticipant && !participants.includes(newParticipant)) {
+      setNewParticipant("");
+      if (sessionId) {
+        await mockSessionStore.addParticipant(sessionId, newParticipant);
+      }
+    }
+  };
+
+  const removeParticipant = (address: string) => {
+    // In mock implementation, we'll just update local state
+    // In real app, this would update the backend/smart contract
+    const updated = participants.filter(p => p !== address);
+    setParticipants(updated);
+  };
+
+  const handleCreatePost = async () => {
+    if (!selectedFile) {
+      alert("Please select an image or video");
       return;
     }
 
     try {
-      const currentCounter = interactionCounter ? Number(interactionCounter) : 0;
+      setIsUploading(true);
 
-      toast.loading("Uploading to IPFS...");
-      const ipfsHashResult = await uploadToIPFS(selectedFile!);
+      const ipfsHash = await uploadToIPFS(selectedFile);
 
-      toast.loading("Creating interaction on blockchain...");
+      if (!ipfsHash) {
+        throw new Error("Failed to upload to IPFS");
+      }
 
-      await writeContractAsync({
-        functionName: "createInteraction",
-        args: [ipfsHashResult, caption],
+      if (enablePayment && paymentAmount && participants.length > 0) {
+        const percentagePerPerson = Math.floor(10000 / participants.length);
+        const percentages = participants.map(() => BigInt(percentagePerPerson));
+
+        await writePaymentAsync({
+          functionName: "createPaymentSplit",
+          args: [BigInt(1), participants as `0x${string}`[], percentages],
+          value: parseEther(paymentAmount),
+        });
+      }
+
+      const tx = await writeContractAsync({
+        functionName: "createPost",
+        args: [participants as `0x${string}`[], ipfsHash, caption, isPublic],
       });
 
-      toast.dismiss();
-      toast.success("Transaction confirmed!");
-
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      const { data: newCounterData } = await refetchCounter();
-      const newCounter = newCounterData ? Number(newCounterData) : currentCounter + 1;
-
-      if (newCounter > currentCounter) {
-        setPendingInteractionId(newCounter);
-        setStep("qr");
-        toast.success("Interaction created! Show the QR code to verify.");
-      } else {
-        toast.success("Interaction created! Check your profile to see it.");
-        setTimeout(() => {
-          window.location.href = "/";
-        }, 2000);
-      }
+      alert("Post created successfully!");
+      router.push("/feed");
     } catch (error) {
-      console.error("Error creating interaction:", error);
-      toast.error("Failed to create interaction");
+      console.error("Error creating post:", error);
+      alert("Failed to create post");
+    } finally {
+      setIsUploading(false);
     }
   };
 
-  if (!isConnected) {
-    return (
-      <div className="container mx-auto p-4">
-        <div className="alert alert-warning">
-          <span>Please connect your wallet to create an interaction</span>
-        </div>
-      </div>
-    );
-  }
-
-  if (step === "qr" && pendingInteractionId) {
-    return (
-      <div className="container mx-auto p-4 max-w-2xl">
-        <h1 className="text-3xl font-bold mb-6">Show QR Code to Verify</h1>
-        <div className="card bg-base-100 shadow-xl">
-          <div className="card-body">
-            <div className="alert alert-info mb-4">
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                fill="none"
-                viewBox="0 0 24 24"
-                className="stroke-current shrink-0 w-6 h-6"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth="2"
-                  d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
-                ></path>
-              </svg>
-              <span>Ask the other person to scan this QR code with their phone</span>
-            </div>
-            <div className="flex justify-center py-6">
-              <QRCodeGenerator interactionId={pendingInteractionId} />
-            </div>
-            <div className="text-center mb-4">
-              <p className="text-sm text-gray-600">Waiting for verification...</p>
-              <p className="text-xs text-gray-400 mt-2">The interaction will be created on blockchain once verified</p>
-            </div>
-            <div className="card-actions justify-end">
-              <button
-                className="btn btn-outline"
-                onClick={() => {
-                  setStep("upload");
-                  setPendingInteractionId(null);
-                }}
-              >
-                Cancel
-              </button>
-            </div>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  if (step === "complete") {
-    return (
-      <div className="container mx-auto p-4 max-w-2xl">
-        <h1 className="text-3xl font-bold mb-6">Interaction Complete! ✅</h1>
-        <div className="card bg-base-100 shadow-xl">
-          <div className="card-body">
-            <div className="alert alert-success">
-              <span>Interaction has been verified and created on the blockchain!</span>
-            </div>
-            <div className="card-actions justify-end">
-              <Link href="/" className="btn btn-primary">
-                Go Home
-              </Link>
-            </div>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
   return (
-    <div className="container mx-auto p-4 max-w-2xl">
-      <h1 className="text-3xl font-bold mb-6">Create New Interaction</h1>
+    <div className="min-h-screen pb-20 bg-base-200">
+      <div className="sticky top-0 z-10 bg-base-100 border-b border-base-300">
+        <div className="container mx-auto px-4">
+          <div className="flex justify-between items-center h-14">
+            <button className="btn btn-ghost btn-sm" onClick={() => router.back()}>
+              ← Back
+            </button>
+            <h1 className="text-xl font-bold">Create Post</h1>
+            <div className="w-20"></div>
+          </div>
+        </div>
+      </div>
 
-      <div className="card bg-base-100 shadow-xl">
-        <div className="card-body">
-          <h2 className="card-title mb-4">Upload Photo or Video</h2>
-
-          <div className="form-control mb-4">
-            <label className="label">
-              <span className="label-text">Select File</span>
-            </label>
+      <div className="container mx-auto px-4 py-4 max-w-2xl">
+        {!previewUrl ? (
+          <div
+            className="border-2 border-dashed border-base-300 rounded-lg p-12 text-center cursor-pointer hover:border-primary transition-colors"
+            onClick={() => fileInputRef.current?.click()}
+          >
+            <div className="text-6xl mb-4">📷</div>
+            <p className="text-lg mb-2">Tap to select media</p>
+            <p className="text-sm text-base-content/60">Photo or video</p>
             <input
+              ref={fileInputRef}
               type="file"
               accept="image/*,video/*"
-              onChange={handleFileChange}
-              className="file-input file-input-bordered w-full"
+              className="hidden"
+              onChange={handleFileSelect}
             />
-            {selectedFile && (
-              <div className="mt-2">
-                <p className="text-sm text-gray-600">
-                  Selected: {selectedFile.name} ({(selectedFile.size / 1024).toFixed(2)} KB)
-                </p>
+          </div>
+        ) : (
+          <div className="space-y-4">
+            <div className="relative aspect-square w-full rounded-lg overflow-hidden">
+              <img src={previewUrl} alt="Preview" className="w-full h-full object-cover" />
+              <button
+                className="absolute top-2 right-2 btn btn-circle btn-sm btn-error"
+                onClick={() => {
+                  setSelectedFile(null);
+                  setPreviewUrl("");
+                }}
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="card bg-base-100 shadow-lg">
+              <div className="card-body space-y-4">
+                <div className="form-control">
+                  <label className="label">
+                    <span className="label-text font-semibold">Caption:</span>
+                  </label>
+                  <textarea
+                    className="textarea textarea-bordered h-24 resize-none"
+                    placeholder="Write something..."
+                    value={caption}
+                    onChange={e => setCaption(e.target.value)}
+                  />
+                </div>
+
+                <div className="divider my-2"></div>
+
+                <div className="form-control">
+                  <label className="label">
+                    <span className="label-text font-semibold">Tag Participants:</span>
+                  </label>
+                  <div className="space-y-2">
+                    <div className="flex gap-2">
+                      <AddressInput
+                        value={newParticipant}
+                        onChange={setNewParticipant}
+                        placeholder="+ Add by address"
+                      />
+                      <button className="btn btn-primary btn-sm" onClick={addParticipant}>
+                        Add
+                      </button>
+                    </div>
+                    <button
+                      className="btn btn-outline btn-sm w-full"
+                      onClick={() => {
+                        if (!showQRCode) {
+                          generateSessionId();
+                        }
+                        setShowQRCode(!showQRCode);
+                      }}
+                    >
+                      📱 {showQRCode ? "Hide QR Code" : "Generate QR Code for Tagging"}
+                    </button>
+                    {showQRCode && sessionId && (
+                      <div className="mt-4 p-4 bg-white rounded-lg flex flex-col items-center">
+                        <div className="flex items-center gap-2 mb-2">
+                          <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
+                          <p className="text-sm font-semibold text-gray-700">
+                            QR Code Active - Others can scan to join
+                          </p>
+                        </div>
+                        <QRCodeGenerator interactionId={sessionId} size={200} />
+                        <p className="text-xs text-gray-500 mt-2 text-center">Participants: {participants.length}</p>
+                        <p className="text-xs text-gray-400 mt-1 text-center font-mono">QR: {sessionId}</p>
+                        {participants.length > 0 && (
+                          <div className="mt-3 w-full">
+                            <p className="text-xs font-semibold text-gray-600 mb-1">Scanned:</p>
+                            <div className="space-y-1">
+                              {participants.map(p => (
+                                <div
+                                  key={p}
+                                  className="text-xs bg-success/20 text-success px-2 py-1 rounded flex items-center gap-2"
+                                >
+                                  ✓ {p.slice(0, 6)}...{p.slice(-4)}
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                  {participants.length > 0 && (
+                    <div className="flex flex-wrap gap-2 mt-3">
+                      {participants.map(p => (
+                        <div key={p} className="badge badge-lg badge-primary gap-2 py-3">
+                          @{p.slice(0, 4)}...{p.slice(-4)}
+                          <button onClick={() => removeParticipant(p)} className="hover:text-error">
+                            ✕
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                <div className="divider my-2"></div>
+
+                <div className="form-control">
+                  <label className="label cursor-pointer justify-start gap-4">
+                    <span className="label-text font-semibold">Privacy:</span>
+                    <select
+                      className="select select-bordered select-sm"
+                      value={isPublic ? "public" : "private"}
+                      onChange={e => setIsPublic(e.target.value === "public")}
+                    >
+                      <option value="public">Public</option>
+                      <option value="private">Private</option>
+                    </select>
+                  </label>
+                </div>
+
+                {participants.length > 0 && (
+                  <>
+                    <div className="divider my-2"></div>
+
+                    <div className="form-control">
+                      <label className="label cursor-pointer justify-start gap-4">
+                        <span className="label-text font-semibold">Payment Split:</span>
+                        <input
+                          type="checkbox"
+                          className="toggle toggle-primary"
+                          checked={enablePayment}
+                          onChange={e => setEnablePayment(e.target.checked)}
+                        />
+                        <span className="label-text text-xs">{enablePayment ? "Enabled" : "Disabled"}</span>
+                      </label>
+                    </div>
+
+                    {enablePayment && (
+                      <div className="form-control bg-base-200 p-4 rounded-lg">
+                        <label className="label">
+                          <span className="label-text font-semibold">Total Amount (ETH)</span>
+                        </label>
+                        <input
+                          type="number"
+                          step="0.001"
+                          placeholder="0.1"
+                          className="input input-bordered"
+                          value={paymentAmount}
+                          onChange={e => setPaymentAmount(e.target.value)}
+                        />
+                        <label className="label">
+                          <span className="label-text-alt text-info">
+                            💡 Split equally among {participants.length} participant{participants.length > 1 ? "s" : ""}
+                          </span>
+                        </label>
+                      </div>
+                    )}
+                  </>
+                )}
+
+                <div className="divider my-2"></div>
+
+                <button
+                  className={`btn btn-primary btn-lg w-full ${isUploading ? "loading" : ""}`}
+                  onClick={handleCreatePost}
+                  disabled={isUploading}
+                >
+                  {isUploading ? "Creating Post..." : "Create Post"}
+                </button>
               </div>
-            )}
+            </div>
           </div>
-
-          <div className="form-control mb-4">
-            <label className="label">
-              <span className="label-text">Caption</span>
-            </label>
-            <textarea
-              className="textarea textarea-bordered"
-              placeholder="Describe this moment..."
-              value={caption}
-              onChange={e => setCaption(e.target.value)}
-              rows={3}
-            />
-          </div>
-
-          <div className="card-actions justify-end">
-            <button
-              className="btn btn-primary"
-              onClick={handleCreateInteraction}
-              disabled={isUploading || isPending || !selectedFile || !caption.trim()}
-            >
-              {isUploading ? "Uploading..." : isPending ? "Creating..." : "Create & Generate QR Code"}
-            </button>
-          </div>
-        </div>
+        )}
       </div>
     </div>
   );

@@ -25,6 +25,7 @@
     "blo": "~1.2.0",
     "burner-connector": "0.0.18",
     "daisyui": "5.0.9",
+    "date-fns": "^2.30.0",
     "html5-qrcode": "^2.3.8",
     "kubo-rpc-client": "~5.0.2",
     "next": "~15.2.3",
